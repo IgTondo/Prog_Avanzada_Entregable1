@@ -64,7 +64,10 @@ def move_player(gameState: GameState, steps: int) -> GameState:
     current_player = gameState.current_player
     new_positions = gameState.players_positions.copy()
     new_positions[current_player] += steps
-    
+
+    if new_positions[current_player] < 0:
+        new_positions[current_player] = 0
+
     if new_positions[current_player] >= BOARD_LEN:
         print(f"Player {current_player + 1} has reached the end of the board and wins!")
         exit()
@@ -82,14 +85,14 @@ def move_player(gameState: GameState, steps: int) -> GameState:
 def create_board(board_cells, prizes, punishments):
     board = [0 for i in range(board_cells)]
     for i in range(prizes):
-        prize_index = np.random.randint(1, board_cells - 1)
+        prize_index = np.random.randint(1, board_cells - 2)
         while board[prize_index] != 0:
-            prize_index = np.random.randint(0, board_cells - 1)
+            prize_index = np.random.randint(1, board_cells - 2)
         board[prize_index] = f"p{i + 1}"
     for i in range(punishments):
-        punishment_index = np.random.randint(0, board_cells - 1)
+        punishment_index = np.random.randint(1, board_cells - 2)
         while board[punishment_index] != 0:
-            punishment_index = np.random.randint(0, board_cells - 1)
+            punishment_index = np.random.randint(1, board_cells - 2)
         board[punishment_index] = f"c{i + 1}"
     return board
 
@@ -116,31 +119,39 @@ def initialize_game_state(player_count, mode, board_cells, prizes, punishments) 
     )
 
 def skip_player_turn(game_state: GameState, player_id: int):
-    if game_state.skiped_players is None:
-        game_state.skiped_players = []
-    game_state.skiped_players.append(player_id)
-    print(f"Player {player_id + 1} will skip their next turn.")
+    skiped_players = (game_state.skiped_players.copy() if game_state.skiped_players else []) + [player_id]
+    print(f"Player {get_player_color(game_state.current_player)} will skip their next turn.")
+    return replace(game_state, skiped_players=skiped_players)
 
-def prize1(gameState: GameState, color: str) -> bool:
+def prize1(gameState: GameState) -> bool:
+    print("Prize 1: Skip the next turn of a player of your choice.")
+    colors = ["red", "blue", "green", "yellow"][:len(gameState.players)]
+    color = input(f"Enter the color of the player to skip ({', '.join(colors)}): ").strip().lower()
     player_color = transform_color(color)
     player = find_player_by_color(gameState.players, player_color)
     
     if player is None:
         print(f"No player found with color {color}.")
-        return False
+        return gameState
     
-    skip_player_turn(gameState, player.id)
-    
-    return True
+    return skip_player_turn(gameState, player.id)
 
-def prize2(gameState: GameState, dice_value: int) -> GameState:
+def prize2(gameState: GameState) -> GameState:
+    print("Prize 2: Throw the dice and move forward by the rolled value.")
+    input(f"Player {get_player_color(gameState.current_player)}, press Enter to throw the dice...")
+    dice_value = throw_dice()
     gameState = move_player(gameState, dice_value)
     return gameState
 
 def prize3(gameState: GameState) -> GameState:
+    print("Prize 3: Move forward by two positions.")
     gameState = move_player(gameState, 2)
     return gameState
 
+def punishment_c2(gameState: GameState) -> GameState:
+    print("Punishment 2: Move back by three positions.")
+    gameState = move_player(gameState, -3)
+    return gameState
 PRIZES = {
     "p1": prize1,
     "p2": prize2,
@@ -149,7 +160,7 @@ PRIZES = {
 
 PUNISHMENTS = {
     "c1": lambda gameState: skip_player_turn(gameState, gameState.current_player),
-    "c2": lambda gameState: move_player(gameState, -3)
+    "c2": punishment_c2
 }
 
 def competition(game_state: GameState, player1, player2):
@@ -194,13 +205,15 @@ def manage_colitions(game_state: GameState) -> GameState:
         colliding_players = [id for id, pos in enumerate(game_state.players_positions) if pos == current_position]
         print(f"Players {', '.join(get_player_color(id) for id in colliding_players)} have collided on cell {current_position}.")
         game_state = competition(game_state, colliding_players[0], colliding_players[1])
+        print_board(game_state)
     elif cell_value in PRIZES:
         print(f"Player {player_color} landed on prize: {cell_value}.")
         game_state = PRIZES[cell_value](game_state)
+        print_board(game_state)
     elif cell_value in PUNISHMENTS:
         print(f"Player {player_color} landed on punishment: {cell_value}.")
         game_state = PUNISHMENTS[cell_value](game_state)
-    
+        print_board(game_state)
     return game_state
 
 def print_board(game_state: GameState):
@@ -249,6 +262,11 @@ def game_loop(game_state: GameState, turns):
         current_player=current_player
     )
 
+    if game_state.skiped_players and current_player in game_state.skiped_players:
+        print(f"Player {get_player_color(game_state.current_player)} is skipping their turn.")
+        game_state.skiped_players.remove(current_player)
+        return game_state
+    
     player_color = get_player_color(game_state.current_player)
 
     input(f"Player {player_color}, press Enter to throw the dice...")
@@ -270,5 +288,8 @@ if __name__ == "__main__":
     punishments = 2
     game_state = initialize_game_state(player_count, mode, BOARD_LEN, prizes, punishments)
     turns = player_turns(len(game_state.players))
+    print(f"Game initialized with {player_count} players, {prizes} prizes, and {punishments} punishments.")
+    print("Let's start the game!")
+    print_board(game_state)
     while True:
         game_state = game_loop(game_state, turns)
