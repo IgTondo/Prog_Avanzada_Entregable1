@@ -6,7 +6,7 @@ from dataclasses import dataclass, replace
 class Player:
     id: int
     color: str
-    
+
 @dataclass(frozen=True)
 class GameState:
     board: list
@@ -16,15 +16,15 @@ class GameState:
     final_cell: int
     skiped_players: list = None
     mode: str = "simulation"  
-    
-    
-def get_next_player(game_state: GameState):
+
+
+def player_turns(player_count):
     current_player = 0
     while True:
         yield current_player
-        current_player = (current_player + 1) % len(game_state.players)
-    
-    
+        current_player = (current_player + 1) % player_count
+
+
 def initialize_game_state(player_count, mode, board_cells, prizes, punishments) -> GameState:
     board = create_board(board_cells, prizes, punishments)
     players = [Player(id=i, color=PLAYER_COLORS[i]) for i in range(player_count)]
@@ -38,16 +38,7 @@ def initialize_game_state(player_count, mode, board_cells, prizes, punishments) 
         final_cell=len(board) - 1,
         mode=mode
     )
-    
-def move_player(game_state: GameState, dice_value: int, final_cell: int) -> GameState:
-    new_positions = game_state.players_positions.copy()
-    new_positions[game_state.current_player] += dice_value
-    if new_positions[game_state.current_player] >= final_cell:
-        print(f"Player {game_state.current_player + 1} has reached the end of the board and wins!")
-        exit()
-    return game_state.replace(players_positions=new_positions, current_player=get_next_player(game_state).next())
-    
-    
+
 PRIZES = 3
 PUNISHMENTS = 2
 
@@ -82,6 +73,7 @@ def get_player_color(player_id: int) -> str:
         "\033[33m": "yellow"
     }
     return color_map.get(PLAYER_COLORS[player_id], "unknown")
+
 def skip_player_turn(game_state: GameState, player_id: int):
     if game_state.skiped_players is None:
         game_state.skiped_players = []
@@ -89,7 +81,7 @@ def skip_player_turn(game_state: GameState, player_id: int):
     print(f"Player {player_id + 1} will skip their next turn.")
 
 def competition(game_state: GameState, player1, player2):
-    players_positions = game_state.players_positions
+    players_positions = game_state.players_positions.copy()
 
     input(f"Player {get_player_color(player1)}, press Enter to throw the dice...")
     dice_value_p1 = throw_dice()
@@ -168,7 +160,7 @@ def move_player(gameState: GameState, steps: int) -> GameState:
         board=gameState.board,
         players=gameState.players,
         players_positions=new_positions,
-        current_player=get_next_player(gameState).next(),
+        current_player=game_state.current_player,
         final_cell=gameState.final_cell,
         skiped_players=gameState.skiped_players,
         mode=gameState.mode
@@ -188,23 +180,30 @@ def create_board(board_cells, prizes, punishments):
         board[punishment_index] = f"c{i + 1}"
     return board
 
-def print_board(board, players_positions):  #MODIFICAR
-    assert len(board) == 2 * WIDTH + 2 * (HEIGHT - 2)
-    assert len(players_positions) == PLAYERS
-    assert all(0 <= position < len(board) for position in players_positions)
+def get_symbol(value):
+    if value == 0:
+        return "."
+    elif value.startswith("p"):
+        return "P"
+    elif value.startswith("c"):
+        return "C"
 
-    symbols = {0: ".", 1: "P", -1: "C"}
+def print_board(game_state: GameState):
+    assert len(game_state.board) == 2 * WIDTH + 2 * (HEIGHT - 2)
+    assert len(game_state.players_positions) == len(game_state.players)
+    assert all(0 <= position < len(game_state.board) for position in game_state.players_positions)
     
     # Define a lambda function to format each cell with its index and symbol, centered within the cell width.
     def cell(index):
         players = [f"{PLAYER_COLORS[player]}J{RESET_COLOR}"
-                   for player, position in enumerate(players_positions) if position == index]
-        label = f"{symbols[board[index]]}"
+                   for player, position in enumerate(game_state.players_positions) if position == index]
+        label = f"{get_symbol(game_state.board[index])}"
+      
         visible_length = len(label) + len(players) + bool(players)
         return " " * ((CELL_WIDTH - visible_length) // 2) + label + (
             " " + "".join(players) if players else ""
         ) + " " * ((CELL_WIDTH - visible_length + 1) // 2)
-    
+
     # Create the full border and side borders for the board display.
     full_border = "+" + "+".join("-" * CELL_WIDTH for _ in range(WIDTH)) + "+"
     
@@ -216,7 +215,7 @@ def print_board(board, players_positions):  #MODIFICAR
     print("|" + "|".join(cell(index) for index in range(WIDTH)) + "|")
     print(full_border)
     for row in range(1, HEIGHT - 1):
-        left = len(board) - row
+        left = len(game_state.board) - row
         right = WIDTH + row - 1
         print(f"|{cell(left)}|{' ' * middle_width}|{cell(right)}|")
         if row < HEIGHT - 2:
@@ -245,13 +244,23 @@ def manage_colitions(game_state: GameState) -> GameState:
     
     return game_state
 
-def game_loop(game_state: GameState): #revisar
+def game_loop(game_state: GameState, turns):
+    current_player = next(turns)
+
+    game_state = replace(
+        game_state,
+        current_player=current_player
+    )
+
     player_color = get_player_color(game_state.current_player)
+
     input(f"Player {player_color}, press Enter to throw the dice...")
     dice_value = throw_dice()
-    game_state = move_player(game_state, dice_value, game_state.final_cell)
     print(f"Player {player_color} rolled a {dice_value}.")
-    print_board(game_state.board, game_state.players_positions)
+    game_state = move_player(game_state, dice_value)
+
+    print_board(game_state)
+
     input("Press Enter to continue...")
     game_state = manage_colitions(game_state)
     return game_state
@@ -264,6 +273,7 @@ if __name__ == "__main__":
     prizes = 3
     punishments = 2
     game_state = initialize_game_state(player_count, mode, BOARD_LEN, prizes, punishments)
+    turns = player_turns(len(game_state.players))
     while True:
-        game_state = game_loop(game_state)
+        game_state = game_loop(game_state, turns)
                 
