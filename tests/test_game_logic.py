@@ -155,10 +155,21 @@ def test_clear_terminal_flushes_output(monkeypatch):
 
     stream = FlushTrackingStream()
     monkeypatch.setattr(game.sys, "stdout", stream)
+    monkeypatch.setattr(game.os, "system", lambda _: None)
 
     game.clear_terminal()
 
     assert stream.flush_calls == 1
+
+
+def test_clear_terminal_uses_cls_on_windows(monkeypatch):
+    commands = []
+    monkeypatch.setattr(game.os, "name", "nt")
+    monkeypatch.setattr(game.os, "system", commands.append)
+
+    game.clear_terminal()
+
+    assert commands == ["cls"]
 
 
 def test_simulation_flushes_the_board_before_waiting(monkeypatch):
@@ -184,7 +195,8 @@ def test_simulation_flushes_the_board_before_waiting(monkeypatch):
         max_turns=3,
     )
 
-    assert flushes_before_wait == [1]
+    assert flushes_before_wait == [2]
+    assert "Próximo turno en 1.5 segundos." in stream.getvalue()
 
 
 def test_run_simulation_uses_configured_delay_and_redraws_each_turn(monkeypatch):

@@ -1,4 +1,5 @@
 import logging
+import os
 import sys
 import time
 from dataclasses import dataclass, replace
@@ -165,11 +166,11 @@ def configure_game(input_fn=input) -> GameState:
     }
     mode = modes.get(input_fn("Modo de juego (simulación/interactivo): ").strip().lower())
     while mode is None:
-        mode = modes.get(input_fn("Modo inválido. Ingresá simulación o interactivo: ").strip().lower())
+        mode = modes.get(input_fn("Modo inválido. Ingrese simulación o interactivo: ").strip().lower())
 
     player_count = input_fn("Cantidad de jugadores (2-4): ").strip()
     while not player_count.isdigit() or not 2 <= int(player_count) <= len(PLAYER_COLORS):
-        player_count = input_fn("Cantidad inválida. Ingresá un valor entre 2 y 4: ").strip()
+        player_count = input_fn("Cantidad inválida. Ingrese un valor entre 2 y 4: ").strip()
     player_count = int(player_count)
 
     names = [
@@ -187,7 +188,7 @@ def configure_game(input_fn=input) -> GameState:
                     break
             except ValueError:
                 pass
-            delay = input_fn("Ingresá una cantidad de segundos válida (0 o mayor): ").strip().replace(",", ".")
+            delay = input_fn("Ingrese una cantidad de segundos válida (0 o mayor): ").strip().replace(",", ".")
 
     return initialize_game_state(player_count, mode, BOARD_LEN, PRIZES, PUNISHMENTS, names, simulation_delay)
 
@@ -198,9 +199,9 @@ def skip_player_turn(game_state: GameState, player_id: int):
 
 def prize1(gameState: GameState, input_fn=None) -> GameState:
     input_fn = input if input_fn is None else input_fn
-    print("Premio 1: elegí un color para que pierda su próximo turno.")
+    print("Premio 1: elija un color para que pierda su próximo turno.")
     colors = ["rojo", "azul", "verde", "amarillo"][:len(gameState.players)]
-    color = input_fn(f"Ingresá el color del jugador que perderá el turno ({', '.join(colors)}): ").strip().lower()
+    color = input_fn(f"Ingrese el color del jugador que perderá el turno ({', '.join(colors)}): ").strip().lower()
     player_color = transform_color(color)
     player = find_player_by_color(gameState.players, player_color)
     
@@ -212,19 +213,19 @@ def prize1(gameState: GameState, input_fn=None) -> GameState:
 
 def prize2(gameState: GameState, input_fn=None) -> GameState:
     input_fn = input if input_fn is None else input_fn
-    print("Premio 2: tirá el dado nuevamente y avanzá el valor obtenido.")
-    input_fn(f"Jugador {get_player_color(gameState.current_player)}, presioná Intro para tirar el dado...")
+    print("Premio 2: tire el dado nuevamente y avance el valor obtenido.")
+    input_fn(f"Jugador {get_player_color(gameState.current_player)}, presione Intro para tirar el dado...")
     dice_value = throw_dice()
     gameState = move_player(gameState, dice_value)
     return gameState
 
 def prize3(gameState: GameState, input_fn=None) -> GameState:
-    print("Premio 3: avanzá dos casillas.")
+    print("Premio 3: avance dos casillas.")
     gameState = move_player(gameState, 2)
     return gameState
 
 def punishment_c2(gameState: GameState, input_fn=None) -> GameState:
-    print("Castigo 2: retrocedé tres casillas.")
+    print("Castigo 2: retroceda tres casillas.")
     gameState = move_player(gameState, -3)
     return gameState
 PRIZE_HANDLERS = {
@@ -242,11 +243,11 @@ def competition(game_state: GameState, player1, player2, input_fn=None):
     input_fn = input if input_fn is None else input_fn
     players_positions = game_state.players_positions.copy()
 
-    input_fn(f"Jugador {get_player_color(player1)}, presioná Intro para tirar el dado...")
+    input_fn(f"Jugador {get_player_color(player1)}, presione Intro para tirar el dado...")
     dice_value_p1 = throw_dice()
     print(f"El jugador {get_player_color(player1)} sacó {dice_value_p1}.")
 
-    input_fn(f"Jugador {get_player_color(player2)}, presioná Intro para tirar el dado...")
+    input_fn(f"Jugador {get_player_color(player2)}, presione Intro para tirar el dado...")
     dice_value_p2 = throw_dice()
     print(f"El jugador {get_player_color(player2)} sacó {dice_value_p2}.")
 
@@ -309,7 +310,8 @@ def resolve_turn(game_state: GameState, dice_value: int, input_fn=None) -> GameS
 
 
 def clear_terminal():
-    print("\033[2J\033[H", end="", flush=True)
+    os.system("cls" if os.name == "nt" else "clear")
+    sys.stdout.flush()
 
 def run_simulation(game_state: GameState, sleep_fn=None, clear_fn=None, max_turns=10000) -> GameState:
     sleep_fn = sleep_fn or time.sleep
@@ -330,8 +332,11 @@ def run_simulation(game_state: GameState, sleep_fn=None, clear_fn=None, max_turn
         game_state = game_loop(game_state, turns, automatic_input)
         sys.stdout.flush()
         turn_number += 1
+        if game_state.simulation_delay > 0:
+            print(f"Próximo turno en {game_state.simulation_delay:g} segundos.", flush=True)
         sleep_fn(game_state.simulation_delay)
     return game_state
+
 
 
 def print_board(game_state: GameState):
@@ -393,14 +398,14 @@ def game_loop(game_state: GameState, turns, input_fn=None):
     
     player_color = get_player_color(game_state.current_player)
 
-    input_fn(f"Jugador {player_color}, presioná Intro para tirar el dado...")
+    input_fn(f"Jugador {player_color}, presione Intro para tirar el dado...")
     dice_value = throw_dice()
     print(f"El jugador {player_color} sacó {dice_value}.")
     game_state = resolve_turn(game_state, dice_value, input_fn)
 
     print_board(game_state)
 
-    input_fn("Presioná Intro para continuar...")
+    input_fn("Presione Intro para continuar...")
     return game_state
 
 
