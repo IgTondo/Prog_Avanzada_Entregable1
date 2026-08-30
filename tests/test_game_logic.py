@@ -123,6 +123,15 @@ def test_configure_game_collects_interactive_mode_and_player_names():
     assert [player.name for player in state.players] == ["Ana", "Bruno"]
 
 
+def test_configure_game_collects_simulation_delay():
+    answers = iter(("simulación", "2", "1,5"))
+
+    state = game.configure_game(input_fn=lambda _: next(answers))
+
+    assert state.mode == "simulation"
+    assert state.simulation_delay == 1.5
+
+
 def test_game_loop_accepts_an_input_function_for_non_console_adapters(monkeypatch):
     state = state_at(28)
     monkeypatch.setattr(game, "throw_dice", lambda: 1)
@@ -132,15 +141,22 @@ def test_game_loop_accepts_an_input_function_for_non_console_adapters(monkeypatc
     assert result.winner == 0
 
 
-def test_run_simulation_finishes_without_waiting_for_console_input(monkeypatch):
-    state = game.replace(state_at(28), mode="simulation")
+def test_run_simulation_uses_configured_delay_and_redraws_each_turn(monkeypatch):
+    state = game.replace(state_at(28), mode="simulation", simulation_delay=1.5)
     monkeypatch.setattr(game, "throw_dice", lambda: 1)
-    pauses = []
+    delays = []
+    clears = []
 
-    result = game.run_simulation(state, pause_fn=lambda turn: pauses.append(turn), max_turns=3)
+    result = game.run_simulation(
+        state,
+        sleep_fn=delays.append,
+        clear_fn=lambda: clears.append(True),
+        max_turns=3,
+    )
 
     assert result.winner == 0
-    assert pauses == [1]
+    assert delays == [1.5]
+    assert clears == [True]
 
 
 def test_game_loop_decorator_writes_a_log_entry(tmp_path, monkeypatch):
@@ -175,6 +191,10 @@ def test_run_terminal_game_uses_simulation_mode(monkeypatch):
     monkeypatch.setattr(game, "configure_game", lambda input_fn: state)
     monkeypatch.setattr(game, "throw_dice", lambda: 1)
 
-    result = game.run_terminal_game(input_fn=lambda _: "", pause_fn=lambda _: None)
+    result = game.run_terminal_game(
+        input_fn=lambda _: "",
+        sleep_fn=lambda _: None,
+        clear_fn=lambda: None,
+    )
 
     assert result.winner == 0

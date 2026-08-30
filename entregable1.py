@@ -1,4 +1,5 @@
 import logging
+import time
 from dataclasses import dataclass, replace
 from functools import reduce, wraps
 
@@ -53,6 +54,7 @@ class GameState:
     skiped_players: list = None
     mode: str = "simulation"
     winner: int | None = None
+    simulation_delay: float = 0.0
 
 def find_player_by_color(players, color):
     for player in players:
@@ -134,7 +136,7 @@ def get_symbol(value):
     elif value.startswith("c"):
         return "C"
 
-def initialize_game_state(player_count, mode, board_cells, prizes, punishments, names=None) -> GameState:
+def initialize_game_state(player_count, mode, board_cells, prizes, punishments, names=None, simulation_delay=0.0) -> GameState:
     if not 2 <= player_count <= len(PLAYER_COLORS):
         raise ValueError("La cantidad de jugadores debe estar entre 2 y 4")
     board = create_board(board_cells, prizes, punishments)
@@ -148,7 +150,8 @@ def initialize_game_state(player_count, mode, board_cells, prizes, punishments, 
         current_player=0,
         skiped_players=[],
         final_cell=len(board) - 1,
-        mode=mode
+        mode=mode,
+        simulation_delay=simulation_delay,
     )
 
 def configure_game(input_fn=input) -> GameState:
@@ -173,7 +176,19 @@ def configure_game(input_fn=input) -> GameState:
         for index in range(player_count)
     ] if mode == "interactive" else None
 
-    return initialize_game_state(player_count, mode, BOARD_LEN, PRIZES, PUNISHMENTS, names)
+    simulation_delay = 0.0
+    if mode == "simulation":
+        delay = input_fn("Segundos entre turnos: ").strip().replace(",", ".")
+        while True:
+            try:
+                simulation_delay = float(delay)
+                if simulation_delay >= 0:
+                    break
+            except ValueError:
+                pass
+            delay = input_fn("Ingresá una cantidad de segundos válida (0 o mayor): ").strip().replace(",", ".")
+
+    return initialize_game_state(player_count, mode, BOARD_LEN, PRIZES, PUNISHMENTS, names, simulation_delay)
 
 def skip_player_turn(game_state: GameState, player_id: int):
     skiped_players = (game_state.skiped_players.copy() if game_state.skiped_players else []) + [player_id]
@@ -292,8 +307,12 @@ def resolve_turn(game_state: GameState, dice_value: int, input_fn=None) -> GameS
     )(game_state)
 
 
-def run_simulation(game_state: GameState, pause_fn=None, max_turns=10000) -> GameState:
-    pause_fn = pause_fn or (lambda turn: input(f"Simulación: presioná Intro para continuar al turno {turn + 1}..."))
+def clear_terminal():
+    print("\033[2J\033[H", end="")
+
+def run_simulation(game_state: GameState, sleep_fn=None, clear_fn=None, max_turns=10000) -> GameState:
+    sleep_fn = sleep_fn or time.sleep
+    clear_fn = clear_fn or clear_terminal
     turns = player_turns(len(game_state.players))
     turn_number = 0
 
@@ -306,9 +325,10 @@ def run_simulation(game_state: GameState, pause_fn=None, max_turns=10000) -> Gam
     while game_state.winner is None:
         if turn_number >= max_turns:
             raise RuntimeError("La simulación superó el límite de turnos")
+        clear_fn()
         game_state = game_loop(game_state, turns, automatic_input)
         turn_number += 1
-        pause_fn(turn_number)
+        sleep_fn(game_state.simulation_delay)
     return game_state
 
 
@@ -382,7 +402,7 @@ def game_loop(game_state: GameState, turns, input_fn=None):
     return game_state
 
 
-def run_terminal_game(input_fn=input, pause_fn=None) -> GameState:
+def run_terminal_game(input_fn=input, sleep_fn=None, clear_fn=None) -> GameState:
     game_state = configure_game(input_fn)
     configure_logging()
     print(
@@ -392,7 +412,7 @@ def run_terminal_game(input_fn=input, pause_fn=None) -> GameState:
     print_board(game_state)
 
     if game_state.mode == "simulation":
-        game_state = run_simulation(game_state, pause_fn)
+        game_state = run_simulation(game_state, sleep_fn, clear_fn)
     else:
         turns = player_turns(len(game_state.players))
         while game_state.winner is None:
