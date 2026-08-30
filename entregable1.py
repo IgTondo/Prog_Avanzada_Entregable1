@@ -1,4 +1,5 @@
 import logging
+import sys
 import time
 from dataclasses import dataclass, replace
 from functools import reduce, wraps
@@ -308,7 +309,7 @@ def resolve_turn(game_state: GameState, dice_value: int, input_fn=None) -> GameS
 
 
 def clear_terminal():
-    print("\033[2J\033[H", end="")
+    print("\033[2J\033[H", end="", flush=True)
 
 def run_simulation(game_state: GameState, sleep_fn=None, clear_fn=None, max_turns=10000) -> GameState:
     sleep_fn = sleep_fn or time.sleep
@@ -327,6 +328,7 @@ def run_simulation(game_state: GameState, sleep_fn=None, clear_fn=None, max_turn
             raise RuntimeError("La simulación superó el límite de turnos")
         clear_fn()
         game_state = game_loop(game_state, turns, automatic_input)
+        sys.stdout.flush()
         turn_number += 1
         sleep_fn(game_state.simulation_delay)
     return game_state

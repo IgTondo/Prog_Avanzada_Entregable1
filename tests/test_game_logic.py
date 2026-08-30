@@ -1,3 +1,5 @@
+import io
+
 import pytest
 
 import entregable1 as game
@@ -139,6 +141,50 @@ def test_game_loop_accepts_an_input_function_for_non_console_adapters(monkeypatc
     result = game.game_loop(state, iter((0,)), input_fn=lambda _: "")
 
     assert result.winner == 0
+
+
+def test_clear_terminal_flushes_output(monkeypatch):
+    class FlushTrackingStream(io.StringIO):
+        def __init__(self):
+            super().__init__()
+            self.flush_calls = 0
+
+        def flush(self):
+            self.flush_calls += 1
+            super().flush()
+
+    stream = FlushTrackingStream()
+    monkeypatch.setattr(game.sys, "stdout", stream)
+
+    game.clear_terminal()
+
+    assert stream.flush_calls == 1
+
+
+def test_simulation_flushes_the_board_before_waiting(monkeypatch):
+    class FlushTrackingStream(io.StringIO):
+        def __init__(self):
+            super().__init__()
+            self.flush_calls = 0
+
+        def flush(self):
+            self.flush_calls += 1
+            super().flush()
+
+    stream = FlushTrackingStream()
+    state = game.replace(state_at(28), mode="simulation", simulation_delay=1.5)
+    monkeypatch.setattr(game.sys, "stdout", stream)
+    monkeypatch.setattr(game, "throw_dice", lambda: 1)
+    flushes_before_wait = []
+
+    game.run_simulation(
+        state,
+        sleep_fn=lambda _: flushes_before_wait.append(stream.flush_calls),
+        clear_fn=lambda: None,
+        max_turns=3,
+    )
+
+    assert flushes_before_wait == [1]
 
 
 def test_run_simulation_uses_configured_delay_and_redraws_each_turn(monkeypatch):
