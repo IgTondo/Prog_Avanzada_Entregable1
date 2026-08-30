@@ -64,7 +64,7 @@ def test_skip_player_turn_announces_the_player_that_will_skip(capsys):
     result = game.skip_player_turn(state_at(0), 1)
 
     assert result.skiped_players == [1]
-    assert "blue" in capsys.readouterr().out
+    assert "azul" in capsys.readouterr().out
 
 
 def test_movement_prize_resolves_the_special_cell_it_reaches():
@@ -104,7 +104,7 @@ def test_initialize_game_state_accepts_the_declared_prize_and_punishment_counts(
 
 @pytest.mark.parametrize("player_count", (1, 5))
 def test_initialize_game_state_rejects_unsupported_player_counts(player_count):
-    with pytest.raises(ValueError, match="between 2 and 4"):
+    with pytest.raises(ValueError, match="cantidad de jugadores"):
         game.initialize_game_state(
             player_count,
             "interactive",
