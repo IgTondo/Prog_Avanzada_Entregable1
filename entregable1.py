@@ -64,7 +64,7 @@ def find_player_by_color(players, color):
             return player
     return None
 
-def transform_color(color: str) -> str:
+def color_name_to_code(color: str) -> str:
     color_map = {
         "rojo": "\033[31m", "red": "\033[31m",
         "azul": "\033[34m", "blue": "\033[34m",
@@ -73,7 +73,7 @@ def transform_color(color: str) -> str:
     }
     return color_map.get(color.lower(), "")
 
-def get_player_color(player_id: int) -> str:
+def get_player_color_name(player_id: int) -> str:
     color_map = {
         "\033[31m": "rojo",
         "\033[34m": "azul",
@@ -138,11 +138,9 @@ def get_symbol(value):
     elif value.startswith("c"):
         return "C"
 
-def initialize_game_state(player_count, mode, board_cells, prizes, punishments, names=None, simulation_delay=0.0) -> GameState:
-    if not 2 <= player_count <= len(PLAYER_COLORS):
-        raise ValueError("La cantidad de jugadores debe estar entre 2 y 4")
-    board = create_board(board_cells, prizes, punishments)
-    names = names or [f"Jugador {i + 1}" for i in range(player_count)]
+def initialize_game_state(player_count, mode, board_len, prize_count, punishment_count, names=None, simulation_delay=0.0) -> GameState:
+    board = create_board(board_len, prize_count, punishment_count)
+    names = names or [f"Jugador " for i in range(player_count)]
     players = [Player(id=i, color=PLAYER_COLORS[i], name=names[i]) for i in range(player_count)]
     players_positions = [0 for _ in range(player_count)]
     return GameState(
@@ -156,31 +154,31 @@ def initialize_game_state(player_count, mode, board_cells, prizes, punishments, 
         simulation_delay=simulation_delay,
     )
 
-def configure_game(input_fn=input) -> GameState:
-    modes = {
-        "simulacion": "simulation",
-        "simulación": "simulation",
-        "simulation": "simulation",
-        "interactivo": "interactive",
-        "interactive": "interactive",
-    }
-    mode = modes.get(input_fn("Modo de juego (simulación/interactivo): ").strip().lower())
-    while mode is None:
-        mode = modes.get(input_fn("Modo inválido. Ingrese simulación o interactivo: ").strip().lower())
+def get_player_names(player_count):
+    names = []
+    for index in range(player_count):
+        name = input(f"Nombre del jugador {index + 1}: ").strip()
+        while not name:
+            name = input("Nombre inválido. Ingrese un nombre: ").strip()
+        names.append(name)
+    return names
 
-    player_count = input_fn("Cantidad de jugadores (2-4): ").strip()
-    while not player_count.isdigit() or not 2 <= int(player_count) <= len(PLAYER_COLORS):
-        player_count = input_fn("Cantidad inválida. Ingrese un valor entre 2 y 4: ").strip()
+
+def configure_game(min_player_count, max_player_count, modes, board_len, prize_count, punishment_count) -> GameState:
+    mode = input(f"Modo de juego ({'/'.join(modes)}): ").strip().lower()
+    while mode not in modes:
+        mode = input(f"Modo inválido. Ingrese uno de los siguientes: {', '.join(modes)}: ").strip().lower()
+
+    player_count = input("Cantidad de jugadores (2-4): ").strip()
+    while not player_count.isdigit() or not min_player_count <= int(player_count) <= max_player_count:
+        player_count = input(f"Cantidad inválida. Ingrese un valor entre {min_player_count} y {max_player_count}: ").strip()
     player_count = int(player_count)
 
-    names = [
-        input_fn(f"Nombre del jugador {index + 1}: ").strip() or f"Jugador {index + 1}"
-        for index in range(player_count)
-    ] if mode == "interactive" else None
+    names = get_player_names(player_count) if mode == "interactive" else None
 
     simulation_delay = 0.0
     if mode == "simulation":
-        delay = input_fn("Segundos entre turnos: ").strip().replace(",", ".")
+        delay = input("Segundos entre turnos: ").strip().replace(",", ".")
         while True:
             try:
                 simulation_delay = float(delay)
@@ -188,21 +186,20 @@ def configure_game(input_fn=input) -> GameState:
                     break
             except ValueError:
                 pass
-            delay = input_fn("Ingrese una cantidad de segundos válida (0 o mayor): ").strip().replace(",", ".")
+            delay = input("Ingrese una cantidad de segundos válida (0 o mayor): ").strip().replace(",", ".")
 
-    return initialize_game_state(player_count, mode, BOARD_LEN, PRIZES, PUNISHMENTS, names, simulation_delay)
+    return initialize_game_state(player_count, mode, board_len, prize_count, punishment_count, names, simulation_delay)
 
 def skip_player_turn(game_state: GameState, player_id: int):
     skiped_players = (game_state.skiped_players.copy() if game_state.skiped_players else []) + [player_id]
-    print(f"El jugador {get_player_color(player_id)} perderá su próximo turno.")
+    print(f"El jugador {get_player_color_name(player_id)} perderá su próximo turno.")
     return replace(game_state, skiped_players=skiped_players)
 
-def prize1(gameState: GameState, input_fn=None) -> GameState:
-    input_fn = input if input_fn is None else input_fn
+def prize1(gameState: GameState) -> GameState:
     print("Premio 1: elija un color para que pierda su próximo turno.")
     colors = ["rojo", "azul", "verde", "amarillo"][:len(gameState.players)]
-    color = input_fn(f"Ingrese el color del jugador que perderá el turno ({', '.join(colors)}): ").strip().lower()
-    player_color = transform_color(color)
+    color = input(f"Ingrese el color del jugador que perderá el turno ({', '.join(colors)}): ").strip().lower()
+    player_color = color_name_to_code(color)
     player = find_player_by_color(gameState.players, player_color)
     
     if player is None:
@@ -211,20 +208,19 @@ def prize1(gameState: GameState, input_fn=None) -> GameState:
     
     return skip_player_turn(gameState, player.id)
 
-def prize2(gameState: GameState, input_fn=None) -> GameState:
-    input_fn = input if input_fn is None else input_fn
+def prize2(gameState: GameState) -> GameState:
     print("Premio 2: tire el dado nuevamente y avance el valor obtenido.")
-    input_fn(f"Jugador {get_player_color(gameState.current_player)}, presione Intro para tirar el dado...")
+    input(f"Jugador {get_player_color_name(gameState.current_player)}, presione Intro para tirar el dado...")
     dice_value = throw_dice()
     gameState = move_player(gameState, dice_value)
     return gameState
 
-def prize3(gameState: GameState, input_fn=None) -> GameState:
+def prize3(gameState: GameState) -> GameState:
     print("Premio 3: avance dos casillas.")
     gameState = move_player(gameState, 2)
     return gameState
 
-def punishment_c2(gameState: GameState, input_fn=None) -> GameState:
+def punishment_c2(gameState: GameState) -> GameState:
     print("Castigo 2: retroceda tres casillas.")
     gameState = move_player(gameState, -3)
     return gameState
@@ -235,28 +231,27 @@ PRIZE_HANDLERS = {
 }
 
 PUNISHMENT_HANDLERS = {
-    "c1": lambda gameState, input_fn: skip_player_turn(gameState, gameState.current_player),
+    "c1": lambda gameState: skip_player_turn(gameState, gameState.current_player),
     "c2": punishment_c2
 }
 
-def competition(game_state: GameState, player1, player2, input_fn=None):
-    input_fn = input if input_fn is None else input_fn
+def competition(game_state: GameState, player1, player2):
     players_positions = game_state.players_positions.copy()
 
-    input_fn(f"Jugador {get_player_color(player1)}, presione Intro para tirar el dado...")
+    input(f"Jugador {get_player_color_name(player1)}, presione Intro para tirar el dado...")
     dice_value_p1 = throw_dice()
-    print(f"El jugador {get_player_color(player1)} sacó {dice_value_p1}.")
+    print(f"El jugador {get_player_color_name(player1)} sacó {dice_value_p1}.")
 
-    input_fn(f"Jugador {get_player_color(player2)}, presione Intro para tirar el dado...")
+    input(f"Jugador {get_player_color_name(player2)}, presione Intro para tirar el dado...")
     dice_value_p2 = throw_dice()
-    print(f"El jugador {get_player_color(player2)} sacó {dice_value_p2}.")
+    print(f"El jugador {get_player_color_name(player2)} sacó {dice_value_p2}.")
 
     if dice_value_p1 == dice_value_p2:
         print("Ambos jugadores sacaron el mismo valor. Vuelven a tirar.")
-        return competition(game_state, player1, player2, input_fn)
+        return competition(game_state, player1, player2)
     
     loser = player2 if dice_value_p1 > dice_value_p2 else player1
-    print(f"El jugador {get_player_color(loser)} perdió la competencia y retrocede dos casillas.")
+    print(f"El jugador {get_player_color_name(loser)} perdió la competencia y retrocede dos casillas.")
     players_positions[loser] = max(players_positions[loser] - 2, 0)
 
     while (
@@ -264,7 +259,7 @@ def competition(game_state: GameState, player1, player2, input_fn=None):
         and players_positions[loser] > 0
     ):
         players_positions[loser]-=1
-        print(f"El jugador {get_player_color(loser)} volvió a chocar y retrocede una casilla, hasta la posición {players_positions[loser]}.")
+        print(f"El jugador {get_player_color_name(loser)} volvió a chocar y retrocede una casilla, hasta la posición {players_positions[loser]}.")
     
     return GameState(
         board=game_state.board,
@@ -276,65 +271,53 @@ def competition(game_state: GameState, player1, player2, input_fn=None):
         final_cell=game_state.final_cell
     )
 
-def manage_colitions(game_state: GameState, input_fn=None) -> GameState:
-    input_fn = input if input_fn is None else input_fn
+def manage_colitions(game_state: GameState) -> GameState:
     current_position = game_state.players_positions[game_state.current_player]
     cell_value = game_state.board[current_position]
-    player_color = get_player_color(game_state.current_player)
+    player_color = get_player_color_name(game_state.current_player)
 
     if len(list(filter(lambda x: x == current_position, game_state.players_positions))) > 1:
         colliding_players = [id for id, pos in enumerate(game_state.players_positions) if pos == current_position]
-        print(f"Los jugadores {', '.join(get_player_color(id) for id in colliding_players)} chocaron en la casilla {current_position}.")
-        game_state = competition(game_state, colliding_players[0], colliding_players[1], input_fn)
+        print(f"Los jugadores {', '.join(get_player_color_name(id) for id in colliding_players)} chocaron en la casilla {current_position}.")
+        game_state = competition(game_state, colliding_players[0], colliding_players[1])
         print_board(game_state)
     elif cell_value in PRIZE_HANDLERS:
         print(f"El jugador {player_color} cayó en el premio {cell_value}.")
-        game_state = PRIZE_HANDLERS[cell_value](game_state, input_fn)
+        game_state = PRIZE_HANDLERS[cell_value](game_state)
         print_board(game_state)
     elif cell_value in PUNISHMENT_HANDLERS:
         print(f"El jugador {player_color} cayó en el castigo {cell_value}.")
-        game_state = PUNISHMENT_HANDLERS[cell_value](game_state, input_fn)
+        game_state = PUNISHMENT_HANDLERS[cell_value](game_state)
         print_board(game_state)
 
     moved_by_effect = game_state.players_positions[game_state.current_player] != current_position
     if game_state.winner is None and moved_by_effect:
-        return manage_colitions(game_state, input_fn)
+        return manage_colitions(game_state)
     return game_state
 
-def resolve_turn(game_state: GameState, dice_value: int, input_fn=None) -> GameState:
-    input_fn = input if input_fn is None else input_fn
+def resolve_turn(game_state: GameState, dice_value: int) -> GameState:
     return compose(
-        lambda state: manage_colitions(state, input_fn),
+        lambda state: manage_colitions(state),
         lambda state: move_player(state, dice_value),
     )(game_state)
 
-
-def clear_terminal():
-    os.system("cls" if os.name == "nt" else "clear")
-    sys.stdout.flush()
-
-def run_simulation(game_state: GameState, sleep_fn=None, clear_fn=None, max_turns=10000) -> GameState:
-    sleep_fn = sleep_fn or time.sleep
-    clear_fn = clear_fn or clear_terminal
+def run_simulation(game_state: GameState, max_turns=10000) -> GameState:
     turns = player_turns(len(game_state.players))
     turn_number = 0
 
     def automatic_input(prompt):
         if "color" in prompt.lower():
             target = (game_state.current_player + 1) % len(game_state.players)
-            return get_player_color(target)
+            return get_player_color_name(target)
         return ""
 
     while game_state.winner is None:
         if turn_number >= max_turns:
             raise RuntimeError("La simulación superó el límite de turnos")
-        clear_fn()
         game_state = game_loop(game_state, turns, automatic_input)
-        sys.stdout.flush()
         turn_number += 1
         if game_state.simulation_delay > 0:
-            print(f"Próximo turno en {game_state.simulation_delay:g} segundos.", flush=True)
-        sleep_fn(game_state.simulation_delay)
+            time.sleep(game_state.simulation_delay)
     return game_state
 
 
@@ -378,8 +361,7 @@ def print_board(game_state: GameState):
     print(full_border)
 
 @log_game_action
-def game_loop(game_state: GameState, turns, input_fn=None):
-    input_fn = input if input_fn is None else input_fn
+def game_loop(game_state: GameState, turns):
     if game_state.winner is not None:
         return game_state
 
@@ -391,26 +373,27 @@ def game_loop(game_state: GameState, turns, input_fn=None):
     )
 
     if game_state.skiped_players and current_player in game_state.skiped_players:
-        print(f"El jugador {get_player_color(game_state.current_player)} pierde este turno.")
+        print(f"El jugador {get_player_color_name(game_state.current_player)} pierde este turno.")
         skiped_players = game_state.skiped_players.copy()
         skiped_players.remove(current_player)
         return replace(game_state, skiped_players=skiped_players)
     
-    player_color = get_player_color(game_state.current_player)
+    player_color = get_player_color_name(game_state.current_player)
 
-    input_fn(f"Jugador {player_color}, presione Intro para tirar el dado...")
+    input(f"Jugador {player_color}, presione Intro para tirar el dado...")
     dice_value = throw_dice()
     print(f"El jugador {player_color} sacó {dice_value}.")
-    game_state = resolve_turn(game_state, dice_value, input_fn)
+    game_state = resolve_turn(game_state, dice_value)
 
     print_board(game_state)
 
-    input_fn("Presione Intro para continuar...")
+    input("Presione Intro para continuar...")
     return game_state
 
 
-def run_terminal_game(input_fn=input, sleep_fn=None, clear_fn=None) -> GameState:
-    game_state = configure_game(input_fn)
+
+def run_terminal_game(min_player_count, max_player_count, modes, board_len, prize_count, punishment_count) -> GameState:
+    game_state = configure_game(min_player_count, max_player_count, modes, board_len, prize_count, punishment_count)
     configure_logging()
     print(
         f"Juego inicializado: {len(game_state.players)} jugadores, "
@@ -419,18 +402,24 @@ def run_terminal_game(input_fn=input, sleep_fn=None, clear_fn=None) -> GameState
     print_board(game_state)
 
     if game_state.mode == "simulation":
-        game_state = run_simulation(game_state, sleep_fn, clear_fn)
+        game_state = run_simulation(game_state)
     else:
         turns = player_turns(len(game_state.players))
         while game_state.winner is None:
-            game_state = game_loop(game_state, turns, input_fn)
+            game_state = game_loop(game_state, turns)
 
     if game_state.winner is None:
         raise RuntimeError("El juego terminó sin ganador")
     winner = game_state.players[game_state.winner]
-    print(f"{winner.name} ({get_player_color(winner.id)}) gana el juego.")
+    print(f"{winner.name} ({get_player_color_name(winner.id)}) gana el juego.")
     return game_state
 
 
 if __name__ == "__main__":
-    run_terminal_game()
+    min_player_count = 2
+    max_player_count = 4
+    modes = ("simulacion", "interactivo")
+    board_len = BOARD_LEN
+    prize_count = PRIZES
+    punishment_count = PUNISHMENTS
+    run_terminal_game(min_player_count, max_player_count, modes, board_len, prize_count, punishment_count)
