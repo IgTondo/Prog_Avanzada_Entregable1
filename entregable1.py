@@ -28,9 +28,10 @@ def configure_logging(log_file="game.log"):
 def log_game_action(function):
     @wraps(function)
     def wrapped(*args, **kwargs):
-        LOGGER.info("%s inició", function.__name__)
+        game_state = args[0]
+        LOGGER.info("%s inició | %s", function.__name__, format_game_state_for_log(game_state))
         result = function(*args, **kwargs)
-        LOGGER.info("%s finalizó", function.__name__)
+        LOGGER.info("%s finalizó | %s", function.__name__, format_game_state_for_log(result))
         return result
     return wrapped
 
@@ -93,14 +94,18 @@ def get_player_color_name(player_id: int) -> str:
     return color_map.get(PLAYER_COLORS[player_id], "desconocido")
 
 def get_player_label(game_state: GameState, player_id: int) -> str:
-    if game_state.players[player_id].name:
-        return f"{game_state.players[player_id].name} ({get_player_color_name(player_id)})"
-    return f"{game_state.players[player_id].color}"
+    return f"{game_state.players[player_id].name} {get_player_color_name(player_id)}"
 
-def get_player_label_start(game_state: GameState, player_id: int) -> str:
-    if game_state.players[player_id].name:
-        return f"{game_state.players[player_id].name} ({get_player_color_name(player_id)})"
-    return f"Jugador {game_state.players[player_id].color}"
+def format_game_state_for_log(game_state: GameState) -> str:
+    positions = ", ".join(
+        f"{get_player_label(game_state, player.id)}={game_state.players_positions[player.id]}"
+        for player in game_state.players
+    )
+    winner = get_player_label(game_state, game_state.winner) if game_state.winner is not None else "ninguno"
+    return (
+        f"turno_actual={game_state.current_player} posiciones=[{positions}] "
+        f"saltados={game_state.skiped_players or []} ganador={winner}"
+    )
 
 def player_turns(player_count):
     current_player = 0
@@ -182,7 +187,7 @@ def get_symbol(value):
 
 def initialize_game_state(player_count, mode, board_len, prize_count, punishment_count, names=None, simulation_delay=0.0) -> GameState:
     board = create_board(board_len, prize_count, punishment_count)
-    names = names or [f"Jugador " for i in range(player_count)]
+    names = names or [f"Jugador" for i in range(player_count)]
     players = [Player(id=i, color=PLAYER_COLORS[i], name=names[i]) for i in range(player_count)]
     players_positions = [0 for _ in range(player_count)]
     return GameState(
@@ -268,13 +273,13 @@ def prize1(game_state: GameState, io: GameIO) -> GameState:
         io.show(f"No hay ningún jugador con el color {color}.")
         return game_state
 
-    io.show(f"{get_player_label_start(game_state, player.id)} perderá su próximo turno.")
+    io.show(f"{get_player_label(game_state, player.id)} perderá su próximo turno.")
     return apply_prize1(game_state, player.id)
 
 
 def prize2(game_state: GameState, io: GameIO) -> GameState:
     io.show("Premio 2: tire el dado nuevamente y avance el valor obtenido.")
-    player = get_player_label_start(game_state, game_state.current_player)
+    player = get_player_label(game_state, game_state.current_player)
     io.wait_for_roll(f"{player}, presione Intro para tirar el dado...")
     dice_value = io.roll_dice()
     io.show(f"{player} tiró {dice_value}.")
@@ -321,8 +326,8 @@ def competition_loser(player1: int, player2: int, dice_value_p1: int, dice_value
 
 def competition(game_state: GameState, player1: int, player2: int, io: GameIO) -> GameState:
     while True:
-        player1_label = get_player_label_start(game_state, player1)
-        player2_label = get_player_label_start(game_state, player2)
+        player1_label = get_player_label(game_state, player1)
+        player2_label = get_player_label(game_state, player2)
 
         io.wait_for_roll(f"{player1_label}, presione Intro para tirar el dado...")
         dice_value_p1 = io.roll_dice()
@@ -338,7 +343,7 @@ def competition(game_state: GameState, player1: int, player2: int, io: GameIO) -
             continue
         break
 
-    io.show(f"{get_player_label_start(game_state, loser)} perdió la competencia y retrocede dos casillas.")
+    io.show(f"{get_player_label(game_state, loser)} perdió la competencia y retrocede dos casillas.")
     game_state = move_player(game_state, loser, -2)
     io.draw_board(game_state)
 
@@ -349,7 +354,7 @@ def competition(game_state: GameState, player1: int, player2: int, io: GameIO) -
         game_state = move_player(game_state, loser, -1)
         io.draw_board(game_state)
         io.show(
-            f"{get_player_label_start(game_state, loser)} volvió a chocar y retrocede una casilla, "
+            f"{get_player_label(game_state, loser)} volvió a chocar y retrocede una casilla, "
             f"hasta la posición {game_state.players_positions[loser]}."
         )
 
@@ -359,17 +364,17 @@ def competition(game_state: GameState, player1: int, player2: int, io: GameIO) -
 def manage_collisions(game_state: GameState, io: GameIO) -> GameState:
     current_position = game_state.players_positions[game_state.current_player]
     cell_value = game_state.board[current_position]
-    player_color = get_player_color_name(game_state.current_player)
+    player_color = get_player_label(game_state, game_state.current_player)
 
     if len(list(filter(lambda x: x == current_position, game_state.players_positions))) > 1:
         colliding_players = [id for id, pos in enumerate(game_state.players_positions) if pos == current_position]
         io.show(f"Los jugadores {', '.join(get_player_label(game_state, id) for id in colliding_players)} chocaron en la casilla {current_position}.")
         game_state = competition(game_state, colliding_players[0], colliding_players[1], io)
     elif cell_value in PRIZE_HANDLERS:
-        io.show(f"El jugador {player_color} cayó en el premio {cell_value}.")
+        io.show(f"{player_color} cayó en el premio {cell_value}.")
         game_state = PRIZE_HANDLERS[cell_value](game_state, io)
     elif cell_value in PUNISHMENT_HANDLERS:
-        io.show(f"El jugador {player_color} cayó en el castigo {cell_value}.")
+        io.show(f"{player_color} cayó en el castigo {cell_value}.")
         game_state = PUNISHMENT_HANDLERS[cell_value](game_state, io)
 
     moved_by_effect = game_state.players_positions[game_state.current_player] != current_position
@@ -454,15 +459,15 @@ def game_loop(game_state: GameState, turns, io: GameIO) -> GameState:
     )
 
     if game_state.skiped_players and current_player in game_state.skiped_players:
-        io.show(f"{get_player_label_start(game_state, game_state.current_player)} pierde este turno.")
+        io.show(f"{get_player_label(game_state, game_state.current_player)} pierde este turno.")
         io.wait_next_turn()
         return remove_skipped_player(game_state, current_player)
     
-    player_color = get_player_label_start(game_state, game_state.current_player)
+    player_color = get_player_label(game_state, game_state.current_player)
 
-    io.wait_for_roll(f"Jugador {player_color}, presione Intro para tirar el dado...")
+    io.wait_for_roll(f"{player_color}, presione Intro para tirar el dado...")
     dice_value = io.roll_dice()
-    io.show(f"El jugador {player_color} sacó {dice_value}.")
+    io.show(f"{player_color} sacó {dice_value}.")
     game_state = resolve_turn(game_state, dice_value, io)
 
     io.wait_next_turn()
@@ -490,7 +495,7 @@ def run_terminal_game(min_player_count, max_player_count, modes, board_len, priz
     if game_state.winner is None:
         raise RuntimeError("El juego terminó sin ganador")
     winner = game_state.players[game_state.winner]
-    io.show(f"{get_player_label_start(game_state, winner.id)} gana el juego.")
+    io.show(f"{get_player_label(game_state, winner.id)} gana el juego.")
     return game_state
 
 
